@@ -9,10 +9,16 @@ using namespace Eigen;
 
 /// 本程序演示sophus的基本用法
 
+template<typename T>
+void show_angle_axis(const T& v)
+{
+    cout<<"angle="<<v.angle()<<", axis="<<v.axis().transpose()<<endl;
+}
 int main(int argc, char **argv) {
 
   // 沿Z轴转90度的旋转矩阵
   Matrix3d R = AngleAxisd(M_PI / 2, Vector3d(0, 0, 1)).toRotationMatrix();
+  show_angle_axis(AngleAxisd(M_PI / 2, Vector3d(0, 0, 1)));
   // 或者四元数
   Quaterniond q(R);
   Sophus::SO3d SO3_R(R);              // Sophus::SO3d可以直接从旋转矩阵构造
@@ -34,6 +40,8 @@ int main(int argc, char **argv) {
   Vector3d update_so3(1e-4, 0, 0); //假设更新量为这么多
   Sophus::SO3d SO3_updated = Sophus::SO3d::exp(update_so3) * SO3_R;
   cout << "SO3 updated = \n" << SO3_updated.matrix() << endl;
+  cout << "SO3 updated angle axis = \n";
+  show_angle_axis(AngleAxisd(SO3_updated.matrix()));
 
   cout << "*******************************" << endl;
   // 对SE(3)操作大同小异
