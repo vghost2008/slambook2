@@ -41,8 +41,8 @@ int main(int argc, char **argv) {
     return 1;
   }
   //-- 读取图像
-  Mat img_1 = imread(argv[1], CV_LOAD_IMAGE_COLOR);
-  Mat img_2 = imread(argv[2], CV_LOAD_IMAGE_COLOR);
+  Mat img_1 = imread(argv[1], cv::IMREAD_COLOR);
+  Mat img_2 = imread(argv[2], cv::IMREAD_COLOR);
 
   vector<KeyPoint> keypoints_1, keypoints_2;
   vector<DMatch> matches;
@@ -62,16 +62,32 @@ int main(int argc, char **argv) {
   Mat img1_plot = img_1.clone();
   Mat img2_plot = img_2.clone();
   for (int i = 0; i < matches.size(); i++) {
-    // 第一个图
-    float depth1 = points[i].z;
-    cout << "depth: " << depth1 << endl;
-    Point2d pt1_cam = pixel2cam(keypoints_1[matches[i].queryIdx].pt, K);
-    cv::circle(img1_plot, keypoints_1[matches[i].queryIdx].pt, 2, get_color(depth1), 2);
+      // 第一个图
+      float depth1 = points[i].z;
+      cout << "depth: " << depth1 << endl;
+      Point2d pt1_cam = pixel2cam(keypoints_1[matches[i].queryIdx].pt, K);
+      Point2d pt1_cam_3d(
+              points[i].x/points[i].z,
+              points[i].y/points[i].z
+              );
 
-    // 第二个图
-    Mat pt2_trans = R * (Mat_<double>(3, 1) << points[i].x, points[i].y, points[i].z) + t;
-    float depth2 = pt2_trans.at<double>(2, 0);
-    cv::circle(img2_plot, keypoints_2[matches[i].trainIdx].pt, 2, get_color(depth2), 2);
+      cv::circle(img1_plot, keypoints_1[matches[i].queryIdx].pt, 2, get_color(depth1), 2);
+
+      cout<<"point in the first camera frame: "<<pt1_cam<<endl;
+      cout<<"point projected from 3D "<<pt1_cam_3d<<", d="<<points[i].z<<endl;
+
+
+      // 第二个图
+      Point2f pt2_cam = pixel2cam( keypoints_2[ matches[i].trainIdx ].pt, K );
+      Mat pt2_trans = R * (Mat_<double>(3, 1) << points[i].x, points[i].y, points[i].z) + t;
+      float depth2 = pt2_trans.at<double>(2, 0);
+      cv::circle(img2_plot, keypoints_2[matches[i].trainIdx].pt, 2, get_color(depth2), 2);
+      pt2_trans /= pt2_trans.at<double>(2,0);
+
+      cout<<"point in the second camera frame: "<<pt2_cam<<endl;
+      cout<<"point reprojected from second frame: "<<pt2_trans.t()<<endl;
+      cout<<endl;
+
   }
   cv::imshow("img 1", img1_plot);
   cv::imshow("img 2", img2_plot);
@@ -127,6 +143,12 @@ void find_feature_matches(const Mat &img_1, const Mat &img_2,
   }
 }
 
+Point2f transpoints(Point2f p, Point2f center,Point2f focus)
+{
+    auto p1 = p-center;
+    return Point2f(p1.x/focus.x,p1.y/focus.y);
+}
+
 void pose_estimation_2d2d(
   const std::vector<KeyPoint> &keypoints_1,
   const std::vector<KeyPoint> &keypoints_2,
@@ -134,24 +156,36 @@ void pose_estimation_2d2d(
   Mat &R, Mat &t) {
   // 相机内参,TUM Freiburg2
   Mat K = (Mat_<double>(3, 3) << 520.9, 0, 325.1, 0, 521.0, 249.7, 0, 0, 1);
+  //Mat K = ( Mat_<double> ( 3,3 ) << 1.0, 0, 0, 0, 1.0, 0.0, 0, 0, 1 );
+  Point2f center(520.9,521.0);
+  Point2f focus(325.1,249.7);
+
+
+
 
   //-- 把匹配点转换为vector<Point2f>的形式
   vector<Point2f> points1;
   vector<Point2f> points2;
 
   for (int i = 0; i < (int) matches.size(); i++) {
-    points1.push_back(keypoints_1[matches[i].queryIdx].pt);
-    points2.push_back(keypoints_2[matches[i].trainIdx].pt);
+    //points1.push_back(keypoints_1[matches[i].queryIdx].pt);
+    //points2.push_back(keypoints_2[matches[i].trainIdx].pt);
+
+    points1.push_back ( keypoints_1[matches[i].queryIdx].pt );
+    points2.push_back ( keypoints_2[matches[i].trainIdx].pt );
+
   }
 
   //-- 计算本质矩阵
   Point2d principal_point(325.1, 249.7);        //相机主点, TUM dataset标定值
   int focal_length = 521;            //相机焦距, TUM dataset标定值
   Mat essential_matrix;
-  essential_matrix = findEssentialMat(points1, points2, focal_length, principal_point);
+  //essential_matrix = findEssentialMat(points1, points2, focal_length, principal_point);
+  essential_matrix = findEssentialMat(points1, points2, K);
 
   //-- 从本质矩阵中恢复旋转和平移信息.
   recoverPose(essential_matrix, points1, points2, R, t, focal_length, principal_point);
+  //recoverPose(essential_matrix, points1, points2, R, t, 1, Point2d(0,0));
 }
 
 void triangulation(
